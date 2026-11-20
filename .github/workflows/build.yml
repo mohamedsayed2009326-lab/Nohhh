@@ -1,11 +1,8 @@
 
-name: Inspect Abu Sabra Project
+name: Inspect ZIP Project
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   inspect:
@@ -15,36 +12,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inspect Repository and ZIP
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Extract and Inspect
         run: |
-          echo "========== REPOSITORY FILES =========="
-          find . -maxdepth 4 -type f \
-            -not -path "./.git/*" | sort | head -n 250
+          mkdir -p extracted
 
-          echo "========== ZIP FILES =========="
-          find . -type f -iname "*.zip" \
-            -not -path "./.git/*"
-
-          ZIP_FILE=$(find . -type f -iname "*.zip" \
+          ZIP=$(find . -type f -iname "*.zip" \
             -not -path "./.git/*" | head -n 1)
 
-          if [ -n "$ZIP_FILE" ]; then
-            echo "========== ZIP CONTENTS =========="
-            unzip -l "$ZIP_FILE" | head -n 200
-
-            mkdir -p extracted
-            unzip -q "$ZIP_FILE" -d extracted
-
-            echo "========== EXTRACTED FILES =========="
-            find extracted -maxdepth 5 -type f \
-              | sort | head -n 250
+          if [ -z "$ZIP" ]; then
+            echo "ZIP NOT FOUND"
+            echo "Repository files:"
+            find . -maxdepth 5 -type f \
+              -not -path "./.git/*" | head -n 200
+            exit 1
           fi
 
-          echo "========== PROJECT CONFIG =========="
-          find . extracted -type f \
+          echo "ZIP FOUND: $ZIP"
+          unzip -q "$ZIP" -d extracted
+
+          echo "========== PROJECT FILES =========="
+          find extracted -maxdepth 6 -type f \
+            | sort | head -n 300
+
+          echo "========== PROJECT TYPES =========="
+          find extracted -type f \
             \( -name "package.json" \
             -o -name "index.html" \
-            -o -name "capacitor.config.*" \
             -o -name "build.gradle" \
-            -o -name "settings.gradle" \) \
-            -not -path "./.git/*" 2>/dev/null | sort
+            -o -name "settings.gradle" \
+            -o -name "gradlew" \
+            -o -name "AndroidManifest.xml" \
+            -o -name "pubspec.yaml" \) \
+            | sort
