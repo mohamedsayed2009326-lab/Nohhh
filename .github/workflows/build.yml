@@ -1,5 +1,5 @@
 
-name: Abu Sabra APK Builder
+name: Inspect Abu Sabra Project
 
 on:
   workflow_dispatch:
@@ -8,67 +8,43 @@ on:
       - main
 
 jobs:
-  build:
+  inspect:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Find and Extract ZIP
+      - name: Inspect Repository and ZIP
         run: |
-          mkdir -p extracted
+          echo "========== REPOSITORY FILES =========="
+          find . -maxdepth 4 -type f \
+            -not -path "./.git/*" | sort | head -n 250
+
+          echo "========== ZIP FILES =========="
+          find . -type f -iname "*.zip" \
+            -not -path "./.git/*"
 
           ZIP_FILE=$(find . -type f -iname "*.zip" \
             -not -path "./.git/*" | head -n 1)
 
           if [ -n "$ZIP_FILE" ]; then
-            echo "Found ZIP: $ZIP_FILE"
+            echo "========== ZIP CONTENTS =========="
+            unzip -l "$ZIP_FILE" | head -n 200
+
+            mkdir -p extracted
             unzip -q "$ZIP_FILE" -d extracted
-          else
-            echo "No ZIP found. Using repository files."
-            cp -R . extracted/
+
+            echo "========== EXTRACTED FILES =========="
+            find extracted -maxdepth 5 -type f \
+              | sort | head -n 250
           fi
 
-      - name: Inspect Project
-        run: |
-          echo "Project files:"
-          find extracted -maxdepth 5 -type f | head -n 200
-
-      - name: Locate Android Project
-        run: |
-          GRADLE_FILE=$(find extracted -type f -name gradlew | head -n 1)
-
-          if [ -z "$GRADLE_FILE" ]; then
-            echo "ERROR: No Android Gradle project found."
-            echo "Project inspection completed."
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$GRADLE_FILE")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          chmod +x "$GRADLE_FILE"
-
-      - name: Build APK
-        run: |
-          cd "$PROJECT_DIR"
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Abu-Sabra-APK
-          path: extracted/**/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          echo "========== PROJECT CONFIG =========="
+          find . extracted -type f \
+            \( -name "package.json" \
+            -o -name "index.html" \
+            -o -name "capacitor.config.*" \
+            -o -name "build.gradle" \
+            -o -name "settings.gradle" \) \
+            -not -path "./.git/*" 2>/dev/null | sort
