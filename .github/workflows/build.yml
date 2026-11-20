@@ -1,4 +1,5 @@
-name: Extract ZIP and Build APK
+
+name: Abu Sabra APK Builder
 
 on:
   workflow_dispatch:
@@ -11,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Java
@@ -20,26 +21,38 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Extract ZIP
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Find and Extract ZIP
         run: |
           mkdir -p extracted
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          ZIP_FILE=$(find . -type f -iname "*.zip" \
+            -not -path "./.git/*" | head -n 1)
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found in repository root"
-            exit 1
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Found ZIP: $ZIP_FILE"
+            unzip -q "$ZIP_FILE" -d extracted
+          else
+            echo "No ZIP found. Using repository files."
+            cp -R . extracted/
           fi
 
-          echo "Extracting: $ZIP_FILE"
-          unzip -q "$ZIP_FILE" -d extracted
+      - name: Inspect Project
+        run: |
+          echo "Project files:"
+          find extracted -maxdepth 5 -type f | head -n 200
 
-      - name: Find Android project
+      - name: Locate Android Project
         run: |
           GRADLE_FILE=$(find extracted -type f -name gradlew | head -n 1)
 
           if [ -z "$GRADLE_FILE" ]; then
-            echo "ERROR: gradlew not found. This ZIP may not contain an Android Gradle project."
+            echo "ERROR: No Android Gradle project found."
+            echo "Project inspection completed."
             exit 1
           fi
 
@@ -59,4 +72,3 @@ jobs:
           name: Abu-Sabra-APK
           path: extracted/**/build/outputs/apk/**/*.apk
           if-no-files-found: error
-          
