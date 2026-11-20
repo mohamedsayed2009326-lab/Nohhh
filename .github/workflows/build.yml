@@ -1,49 +1,50 @@
-
-name: Inspect ZIP Project
+name: Unzip project
 
 on:
   workflow_dispatch:
+  push:
+    paths: ['*.zip']
+
+permissions:
+  contents: write
 
 jobs:
-  inspect:
+  unzip:
     runs-on: ubuntu-latest
-
+    env:
+      PAT: ${{ secrets.PAT_TOKEN }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN || github.token }}
 
-      - name: Install unzip
-        run: sudo apt-get update && sudo apt-get install -y unzip
-
-      - name: Extract and Inspect
+      - name: Unzip
         run: |
-          mkdir -p extracted
-
-          ZIP=$(find . -type f -iname "*.zip" \
-            -not -path "./.git/*" | head -n 1)
-
-          if [ -z "$ZIP" ]; then
-            echo "ZIP NOT FOUND"
-            echo "Repository files:"
-            find . -maxdepth 5 -type f \
-              -not -path "./.git/*" | head -n 200
-            exit 1
+          ZIP=$(ls -t *.zip 2>/dev/null | head -n 1)
+          test -n "$ZIP" || { echo "no zip found"; exit 1; }
+          rm -rf _x && mkdir _x
+          unzip -q -o "$ZIP" -d _x
+          if [ "$(ls -A _x | wc -l)" = "1" ] && [ -d "_x/$(ls _x)" ]; then
+            SRC="_x/$(ls _x)"
+          else
+            SRC=_x
           fi
+          if [ -n "$PAT" ]; then
+            rsync -a "$SRC"/ ./
+          else
+            rsync -a --exclude='.github/' "$SRC"/ ./
+            if [ -f "$SRC/.github/workflows/build.yml" ]; then
+              mkdir -p workflow-to-add
+              cp "$SRC/.github/workflows/build.yml" workflow-to-add/build.yml.txt
+            fi
+          fi
+          rm -rf _x "$ZIP"
 
-          echo "ZIP FOUND: $ZIP"
-          unzip -q "$ZIP" -d extracted
-
-          echo "========== PROJECT FILES =========="
-          find extracted -maxdepth 6 -type f \
-            | sort | head -n 300
-
-          echo "========== PROJECT TYPES =========="
-          find extracted -type f \
-            \( -name "package.json" \
-            -o -name "index.html" \
-            -o -name "build.gradle" \
-            -o -name "settings.gradle" \
-            -o -name "gradlew" \
-            -o -name "AndroidManifest.xml" \
-            -o -name "pubspec.yaml" \) \
-            | sort
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "nothing to commit"; exit 0; }
+          git commit -m "Unzip project"
+          git push
